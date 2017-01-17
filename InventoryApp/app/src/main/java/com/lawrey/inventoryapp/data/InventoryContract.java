@@ -93,6 +93,15 @@ public class InventoryContract {
          */
         public final static String COLUMN_INVENTORY_PRICE = "price";
 
+        /**
+         * Image of the inventory item.
+         *
+         *
+         *
+         * Type: BLOB
+         */
+        public final static String COLUMN_INVENTORY_IMAGE = "image";
+
     }
 
 }

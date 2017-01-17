@@ -8,15 +8,22 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.Loader;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.provider.MediaStore;
 import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -24,8 +31,23 @@ import android.widget.Toast;
 
 import com.lawrey.inventoryapp.data.InventoryContract;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+
+import static android.R.attr.bitmap;
+
 public class InventoryEditActivity extends AppCompatActivity implements
         LoaderManager.LoaderCallbacks<Cursor> {
+
+    // this is the action code we use in our intent,
+    // this way we know we're looking at the response from our own action
+    private static final int SELECT_PICTURE = 1;
+
+    private String selectedImagePath;
 
     /** Identifier for the inventory data loader */
     private static final int EXISTING_INVENTORY_LOADER = 0;
@@ -44,6 +66,8 @@ public class InventoryEditActivity extends AppCompatActivity implements
 
     /** Boolean flag that keeps track of whether the inventory has been edited (true) or not (false) */
     private boolean mInventoryHasChanged = false;
+
+    private Button imageButton;
 
     /**
      * OnTouchListener that listens for any user touches on a View, implying that they are modifying
@@ -97,17 +121,23 @@ public class InventoryEditActivity extends AppCompatActivity implements
         mQuantityTextView.setOnTouchListener(mTouchListener);
         mPriceEditText.setOnTouchListener(mTouchListener);
 
+        imageButton = (Button) findViewById(R.id.button_image_upload);
     }
 
     /**
      * Get user input from editor and save inventory into database.
      */
     private void saveInventory() {
+
         // Read from input fields
         // Use trim to eliminate leading or trailing white space
         String nameString = mNameEditText.getText().toString().trim();
         String quantityString = mQuantityTextView.getText().toString().trim();
         String priceString = mPriceEditText.getText().toString().trim();
+
+        Drawable image = imageButton.getBackground();
+        Bitmap bitmap = ((BitmapDrawable)image).getBitmap();
+        byte[] imageBytes = getBytes(bitmap);
 
         // Check if this is supposed to be a new inventory
         // and check if all the fields in the editor are blank
@@ -119,64 +149,79 @@ public class InventoryEditActivity extends AppCompatActivity implements
             return;
         }
 
-        // Create a ContentValues object where column names are the keys,
-        // and inventory attributes from the editor are the values.
-        ContentValues values = new ContentValues();
-        values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME, nameString);
-        values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY, quantityString);
-        values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE, priceString);
+        if (TextUtils.isEmpty(nameString)) {
+            Toast.makeText(this, getString(R.string.empty_name_dialog_msg),
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }else if (TextUtils.isEmpty(priceString)) {
+            Toast.makeText(this, getString(R.string.empty_price_dialog_msg),
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }else {
 
-        // If the quantity is not provided by the user, don't try to parse the string into an
-        // integer value. Use 0 by default.
+            // Create a ContentValues object where column names are the keys,
+            // and inventory attributes from the editor are the values.
+            ContentValues values = new ContentValues();
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME, nameString);
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY, quantityString);
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE, priceString);
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_IMAGE, imageBytes);
 
-        int quantity = 0;
-        if (!TextUtils.isEmpty(quantityString)) {
-            quantity = Integer.parseInt(quantityString);
-        }
-        values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY, quantity);
+            // If the quantity is not provided by the user, don't try to parse the string into an
+            // integer value. Use 0 by default.
 
-        // If the price is not provided by the user, don't try to parse the string into an
-        // integer value. Use 0 by default.
-
-        double price = 0.0;
-        if (!TextUtils.isEmpty(priceString)) {
-            price = Double.parseDouble(priceString);
-        }
-        values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE, price);
-
-        // Determine if this is a new or existing inventory by checking if mCurrentInventoryUri is null or not
-        if (mCurrentInventoryUri == null) {
-            // This is a NEW inventory, so insert a new inventory into the provider,
-            // returning the content URI for the new inventory.
-            Uri newUri = getContentResolver().insert(InventoryContract.InventoryEntry.CONTENT_URI, values);
-
-            // Show a toast message depending on whether or not the insertion was successful.
-            if (newUri == null) {
-                // If the new content URI is null, then there was an error with insertion.
-                Toast.makeText(this, getString(R.string.editor_insert_inventory_failed),
-                        Toast.LENGTH_SHORT).show();
-            } else {
-                // Otherwise, the insertion was successful and we can display a toast.
-                Toast.makeText(this, getString(R.string.editor_insert_inventory_successful),
-                        Toast.LENGTH_SHORT).show();
+            int quantity = 0;
+            if (!TextUtils.isEmpty(quantityString)) {
+                quantity = Integer.parseInt(quantityString);
             }
-        } else {
-            // Otherwise this is an EXISTING inventory, so update the inventory with content URI: mCurrentInventoryUri
-            // and pass in the new ContentValues. Pass in null for the selection and selection args
-            // because mCurrentInventoryUri will already identify the correct row in the database that
-            // we want to modify.
-            int rowsAffected = getContentResolver().update(mCurrentInventoryUri, values, null, null);
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY, quantity);
 
-            // Show a toast message depending on whether or not the update was successful.
-            if (rowsAffected == 0) {
-                // If no rows were affected, then there was an error with the update.
-                Toast.makeText(this, getString(R.string.editor_update_inventory_failed),
-                        Toast.LENGTH_SHORT).show();
-            } else {
-                // Otherwise, the update was successful and we can display a toast.
-                Toast.makeText(this, getString(R.string.editor_update_inventory_successful),
-                        Toast.LENGTH_SHORT).show();
+            // If the price is not provided by the user, don't try to parse the string into an
+            // integer value. Use 0 by default.
+
+            double price = 0.0;
+            if (!TextUtils.isEmpty(priceString)) {
+                price = Double.parseDouble(priceString);
             }
+            values.put(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE, price);
+
+            // Determine if this is a new or existing inventory by checking if mCurrentInventoryUri is null or not
+            if (mCurrentInventoryUri == null) {
+                // This is a NEW inventory, so insert a new inventory into the provider,
+                // returning the content URI for the new inventory.
+                Uri newUri = getContentResolver().insert(InventoryContract.InventoryEntry.CONTENT_URI, values);
+
+                // Show a toast message depending on whether or not the insertion was successful.
+                if (newUri == null) {
+                    // If the new content URI is null, then there was an error with insertion.
+                    Toast.makeText(this, getString(R.string.editor_insert_inventory_failed),
+                            Toast.LENGTH_SHORT).show();
+                } else {
+                    // Otherwise, the insertion was successful and we can display a toast.
+                    Toast.makeText(this, getString(R.string.editor_insert_inventory_successful),
+                            Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                // Otherwise this is an EXISTING inventory, so update the inventory with content URI: mCurrentInventoryUri
+                // and pass in the new ContentValues. Pass in null for the selection and selection args
+                // because mCurrentInventoryUri will already identify the correct row in the database that
+                // we want to modify.
+                int rowsAffected = getContentResolver().update(mCurrentInventoryUri, values, null, null);
+
+                // Show a toast message depending on whether or not the update was successful.
+                if (rowsAffected == 0) {
+                    // If no rows were affected, then there was an error with the update.
+                    Toast.makeText(this, getString(R.string.editor_update_inventory_failed),
+                            Toast.LENGTH_SHORT).show();
+                } else {
+                    // Otherwise, the update was successful and we can display a toast.
+                    Toast.makeText(this, getString(R.string.editor_update_inventory_successful),
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            //Exit Activity
+            finish();
         }
     }
 
@@ -211,8 +256,6 @@ public class InventoryEditActivity extends AppCompatActivity implements
             case R.id.action_save:
                 // Save pet to database
                 saveInventory();
-                // Exit activity
-                finish();
                 return true;
             // Respond to a click on the "Delete" menu option
             case R.id.action_delete:
@@ -281,7 +324,8 @@ public class InventoryEditActivity extends AppCompatActivity implements
                 InventoryContract.InventoryEntry._ID,
                 InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME,
                 InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY,
-                InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE };
+                InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE,
+                InventoryContract.InventoryEntry.COLUMN_INVENTORY_IMAGE};
 
         // This loader will execute the ContentProvider's query method on a background thread
         return new CursorLoader(this,   // Parent activity context
@@ -306,16 +350,21 @@ public class InventoryEditActivity extends AppCompatActivity implements
             int nameColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME);
             int quantityColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY);
             int priceColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE);
+            int imageColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_IMAGE);
 
             // Extract out the value from the Cursor for the given column index
             String name = cursor.getString(nameColumnIndex);
             int quantity = cursor.getInt(quantityColumnIndex);
             double price = cursor.getDouble(priceColumnIndex);
+            byte[] image = cursor.getBlob(imageColumnIndex);
 
             // Update the views on the screen with the values from the database
             mNameEditText.setText(name);
             mQuantityTextView.setText(Integer.toString(quantity));
             mPriceEditText.setText(Double.toString(price));
+
+            Drawable d = new BitmapDrawable(getResources(), getImage(image));
+            imageButton.setBackground(d);
 
         }
     }
@@ -426,5 +475,49 @@ public class InventoryEditActivity extends AppCompatActivity implements
             currentQuantity = 0;
         }
         mQuantityTextView.setText(String.valueOf(currentQuantity));
+    }
+
+    public void onUpload(View view) {
+
+        // in onCreate or any event where your want the user to
+        // select a file
+        Intent intent = new Intent();
+        intent.setType("image/*");
+        intent.setAction(Intent.ACTION_GET_CONTENT);
+        startActivityForResult(Intent.createChooser(intent,
+                "Select Picture"), SELECT_PICTURE);
+
+    }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode == RESULT_OK) {
+            if (requestCode == SELECT_PICTURE) {
+                // Let's read picked image data - its URI
+                Uri pickedImage = data.getData();
+                // Let's read picked image path using content resolver
+                String[] filePath = { MediaStore.Images.Media.DATA };
+                Cursor cursor = getContentResolver().query(pickedImage, filePath, null, null, null);
+                cursor.moveToFirst();
+                String imagePath = cursor.getString(cursor.getColumnIndex(filePath[0]));
+
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+                Bitmap bitmap = BitmapFactory.decodeFile(imagePath, options);
+                Drawable bdrawable = new BitmapDrawable(getResources(), bitmap);
+                imageButton.setBackground(bdrawable);
+            }
+        }
+    }
+
+    // convert from bitmap to byte array
+    public static byte[] getBytes(Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 0, stream);
+        return stream.toByteArray();
+    }
+
+    // convert from byte array to bitmap
+    public static Bitmap getImage(byte[] image) {
+        return BitmapFactory.decodeByteArray(image, 0, image.length);
     }
 }

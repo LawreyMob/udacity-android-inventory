@@ -5,6 +5,8 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
@@ -13,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CursorAdapter;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -67,23 +70,27 @@ public class InventoryCursorAdapter extends CursorAdapter {
         TextView nameTextView = (TextView) view.findViewById(R.id.name);
         TextView quantityTextView = (TextView) view.findViewById(R.id.quantity);
         TextView priceTextView = (TextView) view.findViewById(R.id.price);
+        ImageView imageView = (ImageView) view.findViewById(R.id.imageView_item);
 
         // Find the columns of pet attributes that we're interested in
         int nameColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME);
         int quantityColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_QUANTITY);
         int priceColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE);
+        int imageColumnIndex = cursor.getColumnIndex(InventoryContract.InventoryEntry.COLUMN_INVENTORY_IMAGE);
+
 
 
         // Read the pet attributes from the Cursor for the current inventory
         final String inventoryItemName = cursor.getString(nameColumnIndex);
         int inventoryItemQuantity = cursor.getInt(quantityColumnIndex);
         double inventoryItemPrice = cursor.getDouble(priceColumnIndex);
-
+        byte[] inventoryImage = cursor.getBlob(imageColumnIndex);
 
         // Update the TextViews with the attributes for the current inventory
         nameTextView.setText(inventoryItemName);
         quantityTextView.setText("Remaining Stock : " + inventoryItemQuantity);
         priceTextView.setText("Price : $" + String.format("%.2f", inventoryItemPrice));
+        imageView.setImageBitmap(getImage(inventoryImage));
 
         Button onOrderMoreButton = (Button) view.findViewById(R.id.button_order_more);
 
@@ -126,5 +133,10 @@ public class InventoryCursorAdapter extends CursorAdapter {
                 }
             }
         });
+    }
+
+    // convert from byte array to bitmap
+    public static Bitmap getImage(byte[] image) {
+        return BitmapFactory.decodeByteArray(image, 0, image.length);
     }
 }

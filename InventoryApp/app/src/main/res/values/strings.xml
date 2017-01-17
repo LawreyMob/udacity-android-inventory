@@ -88,5 +88,10 @@
     <!-- Text for sale button -->
     <string name="button_sale_text">Sale</string>
 
+    <!-- Empty Name Dialog -->
+    <string name="empty_name_dialog_msg">Please fill in item name</string>
+
+    <!-- Empty Price Dialog -->
+    <string name="empty_price_dialog_msg">Please fill in item price</string>
 
 </resources>

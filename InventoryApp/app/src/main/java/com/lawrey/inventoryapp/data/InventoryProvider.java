@@ -118,7 +118,7 @@ public class InventoryProvider extends ContentProvider {
         final int match = sUriMatcher.match(uri);
         switch (match) {
             case INVENTORY:
-                return insertPet(uri, contentValues);
+                return insertInventory(uri, contentValues);
             default:
                 throw new IllegalArgumentException("Insertion is not supported for " + uri);
         }
@@ -128,7 +128,7 @@ public class InventoryProvider extends ContentProvider {
      * Insert a pet into the database with the given content values. Return the new content URI
      * for that specific row in the database.
      */
-    private Uri insertPet(Uri uri, ContentValues values) {
+    private Uri insertInventory(Uri uri, ContentValues values) {
         // Check that the name is not null
         String name = values.getAsString(InventoryContract.InventoryEntry.COLUMN_INVENTORY_NAME);
         if (name == null) {
@@ -145,6 +145,12 @@ public class InventoryProvider extends ContentProvider {
         double price = values.getAsDouble(InventoryContract.InventoryEntry.COLUMN_INVENTORY_PRICE);
         if ( price <= 0 ) {
             throw new IllegalArgumentException("item requires a valid price");
+        }
+
+        // Check that the image is valid
+        byte[] image = values.getAsByteArray(InventoryContract.InventoryEntry.COLUMN_INVENTORY_IMAGE);
+        if ( image.length <= 0 || image == null ) {
+            throw new IllegalArgumentException("image is invalid");
         }
 
         // Get writeable database
